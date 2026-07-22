@@ -6,11 +6,12 @@ then rotates across them with model fallback.
 
 All voice/style/pitch parameters are explicit — no baked-in persona.
 """
-import os
 import json
-import wave
-import subprocess
 import logging
+import os
+import subprocess
+import time
+import wave
 from typing import Optional
 
 from google import genai
@@ -115,16 +116,15 @@ class GeminiTTSRotator:
         model: Optional[str] = None,
         output_path: Optional[str] = None,
     ) -> str:
-        """
-        Generate TTS audio, rotating across API keys and models.
+        """Generate TTS audio, rotating across API keys and models.
 
         Args:
             text: The text to speak.
-            voice_name: Gemini voice name (Puck, Leda, Aoede, Charon, etc.)
+            voice_name: Gemini voice name (e.g. Puck, Leda, Aoede, Charon).
             style_instruction: Optional speaking-style instruction
                 (e.g. "softly", "cheerfully"). Prepended to text.
             pitch_factor: 1.0 = no change. >1 = higher, <1 = lower.
-            model: Specific model override (e.g. "gemini-3.1-flash-tts-preview").
+            model: Specific model override.
             output_path: Where to save the WAV. Auto-named if omitted.
 
         Returns: Absolute path to the generated WAV file.
@@ -137,7 +137,6 @@ class GeminiTTSRotator:
                     "or set GEMINI_API_KEY / GOOGLE_API_KEY env var."
                 )
 
-        import time
         if not output_path:
             output_path = os.path.join(
                 self.cache_dir, f"tts_{int(time.time())}.wav"

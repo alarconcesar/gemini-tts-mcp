@@ -2,9 +2,9 @@
 Gemini TTS MCP Server — Multi-key TTS with API key rotation.
 
 Exposes:
-  - generate_speech: text → WAV file path
+  - generate_speech: text -> WAV file path
   - list_voices: all 30 Gemini voices with gender, tone, description
-  - list_voices_by_gender: filter by gender (male/female/neutral)
+  - list_voices_by_gender: filter by gender (male/female)
   - reload_keys: refresh API key pool from disk/env
   - pool_status: check configured key count
 
@@ -12,11 +12,14 @@ Install: pip install mcp google-genai
 Run:     python -m gemini_tts_mcp.server
 """
 from __future__ import annotations
+import logging
 import os
 import sys
-import logging
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+# Make the package importable when running from source (not installed via pip)
+_src = os.path.join(os.path.dirname(__file__), "..")
+if os.path.isdir(_src) and _src not in sys.path:
+    sys.path.insert(0, _src)
 
 from mcp.server.fastmcp import FastMCP
 from gemini_tts_mcp.tts_rotator import GeminiTTSRotator
@@ -59,12 +62,11 @@ VOICES = [
     {"name": "Sadachbia",   "gender": "male",     "tone": "Lively",      "desc": "Energetic, spirited expression"},
     {"name": "Sadaltager",  "gender": "male",     "tone": "Knowledgeable","desc": "Expert, well-informed tone"},
     {"name": "Schedar",     "gender": "male",     "tone": "Even",        "desc": "Balanced, consistent tone"},
-    {"name": "Sterope",     "gender": "female",   "tone": "Forward",     "desc": "Bold, direct presentation"},
     {"name": "Sulafat",     "gender": "female",   "tone": "Warm",        "desc": "Comforting, affectionate quality"},
     {"name": "Umbriel",     "gender": "male",     "tone": "Easy-going",  "desc": "Relaxed, conversational"},
     {"name": "Vindemiatrix","gender": "female",   "tone": "Gentle",      "desc": "Soft, kind delivery"},
-    {"name": "Zubenelgenubi","gender": "male",    "tone": "Casual",      "desc": "Informal, conversational"},
     {"name": "Zephyr",      "gender": "female",   "tone": "Bright",      "desc": "High energy, clear articulation"},
+    {"name": "Zubenelgenubi","gender": "male",    "tone": "Casual",      "desc": "Informal, conversational"},
 ]
 
 
@@ -72,7 +74,7 @@ def _voices_table(voices: list[dict]) -> str:
     """Format a list of voices as a readable markdown table."""
     lines = ["| Voice | Gender | Tone | Description |", "|-------|--------|------|-------------|"]
     for v in sorted(voices, key=lambda x: x["name"]):
-        icon = "♂" if v["gender"] == "male" else "♀" if v["gender"] == "female" else "⚧"
+        icon = "♂" if v["gender"] == "male" else "♀"
         lines.append(f"| {v['name']} | {icon} {v['gender'].capitalize()} | {v['tone']} | {v['desc']} |")
     return "\n".join(lines)
 
@@ -86,8 +88,7 @@ def generate_speech(
     model: str | None = None,
     output_path: str | None = None,
 ) -> str:
-    """
-    Generate speech audio from text using Gemini TTS.
+    """Generate speech audio from text using Gemini TTS.
 
     Rotates across all configured API keys and falls back between models.
     Gemini TTS voices are multilingual — any voice speaks the language
@@ -129,14 +130,13 @@ def generate_speech(
 
 @mcp.tool()
 def list_voices(filter_gender: str | None = None, filter_tone: str | None = None) -> str:
-    """
-    List all 30 Gemini TTS voices with gender, tone, and description.
+    """List all Gemini TTS voices with gender, tone, and description.
 
     Optionally filter by gender and/or tone. Gemini TTS voices are
     multilingual — any voice speaks the language of the input text.
 
     Args:
-        filter_gender: Filter by "male", "female", or "neutral" (case-insensitive).
+        filter_gender: Filter by "male", "female" (case-insensitive).
         filter_tone: Filter by tone name, e.g. "Soft", "Bright", "Firm", "Warm",
                      "Upbeat", "Clear", "Smooth", "Informative", "Easy-going", etc.
                      (case-insensitive).
@@ -178,8 +178,7 @@ def list_voices(filter_gender: str | None = None, filter_tone: str | None = None
 
 @mcp.tool()
 def list_voices_by_gender(gender: str) -> str:
-    """
-    List Gemini TTS voices filtered by gender.
+    """List Gemini TTS voices filtered by gender.
 
     Args:
         gender: "male" or "female" (case-insensitive).
