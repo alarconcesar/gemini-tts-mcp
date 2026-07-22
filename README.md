@@ -8,8 +8,10 @@ No baked-in voice, accent, or persona — all parameters are explicit.
 
 - 🔄 **Key rotation** — pool of Gemini API keys; auto-rotates on quota/error
 - 📉 **Model fallback** — tries `gemini-3.1-flash-tts-preview` → `gemini-2.5-flash-preview-tts`
-- 🎙️ **Any voice** — choose from 9+ Gemini voices
+- 🗣️ **30 voices** — full catalog with gender, tone, and description
+- 🔍 **Filter by gender/tone** — `list_voices(male/female)` or by tone name
 - 🎚️ **Pitch control** — `pitch_factor` parameter (ffmpeg-based)
+- 🌐 **Multilingual** — any voice speaks the language of your input text
 - 🧩 **MCP-native** — register in any MCP host (Claude Desktop, Hermes Agent, etc.)
 
 ## Quick Start
@@ -69,7 +71,8 @@ mcp_servers:
 | Tool | Description |
 |------|-------------|
 | `generate_speech` | Text → WAV file |
-| `list_voices` | List available Gemini voice names |
+| `list_voices` | Browse all 30 voices (filter by gender/tone) |
+| `list_voices_by_gender` | Shortcut: `voice "male"` or `voice "female"` |
 | `reload_keys` | Refresh API key pool from disk/env |
 | `pool_status` | Check how many keys are configured |
 
@@ -78,11 +81,56 @@ mcp_servers:
 | Param | Default | Description |
 |-------|---------|-------------|
 | `text` | (required) | Text to vocalize |
-| `voice_name` | `Puck` | One of: Puck, Leda, Aoede, Charon, Fenrir, Kore, Rhea, Triton, Sterope |
+| `voice_name` | `Puck` | Any of the 30 voices |
 | `style_instruction` | `""` | Speaking style e.g. "softly", "cheerfully", "in a calm tone" |
 | `pitch_factor` | `1.0` | >1 = higher pitch, <1 = lower |
 | `model` | `null` | Override model (auto fallback if omitted) |
 | `output_path` | `null` | Custom WAV path |
+
+## Voice Catalog
+
+All **30 voices** are multilingual — any voice speaks the language of your input text.
+
+Female voices (16):
+
+| Voice | Tone | Description |
+|-------|------|-------------|
+| Achernar | Soft | Gentle, mellow tone |
+| Aoede | Breezy | Casual, relaxed delivery |
+| Autonoe | Bright | Clear, vibrant expression |
+| Callirrhoe | Easy-going | Laid-back, comfortable style |
+| Despina | Smooth | Refined, elegant tone |
+| Erinome | Clear | Crisp, distinct articulation |
+| Gacrux | Mature | Experienced, seasoned quality |
+| Kore | Firm | Assertive, confident delivery |
+| Laomedeia | Upbeat | Positive, energetic style |
+| Leda | Youthful | Young-sounding, fresh voice |
+| Pulcherrima | Forward | Direct, straightforward style |
+| Sterope | Forward | Bold, direct presentation |
+| Sulafat | Warm | Comforting, affectionate quality |
+| Vindemiatrix | Gentle | Soft, kind delivery |
+| Zephyr | Bright | High energy, clear articulation |
+
+Male voices (15):
+
+| Voice | Tone | Description |
+|-------|------|-------------|
+| Achird | Friendly | Warm, approachable tone |
+| Algieba | Smooth | Polished, fluid delivery |
+| Algenib | Gravelly | Rough, textured quality |
+| Alnilam | Firm | Steady, resolute delivery |
+| Charon | Informative | Educational, explanatory style |
+| Enceladus | Breathy | Soft, airy quality |
+| Fenrir | Excitable | Energetic, animated expression |
+| Iapetus | Clear | Precise, well-articulated |
+| Orus | Firm | Strong, authoritative tone |
+| Puck | Upbeat | Cheerful, enthusiastic tone |
+| Rasalgethi | Informative | Educational, instructive |
+| Sadachbia | Lively | Energetic, spirited expression |
+| Sadaltager | Knowledgeable | Expert, well-informed tone |
+| Schedar | Even | Balanced, consistent tone |
+| Umbriel | Easy-going | Relaxed, conversational |
+| Zubenelgenubi | Casual | Informal, conversational |
 
 ## Key management
 
