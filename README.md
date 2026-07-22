@@ -18,10 +18,22 @@ No baked-in voice, accent, or persona — all parameters are explicit.
 
 ### 1. Install
 
+> ⚠️ **Note:** This project is not on PyPI yet. The commands below install
+> **dependencies** (`mcp` SDK + `google-genai`). You also need the source code.
+
+**Option A — Clone the repo (recommended):**
+
+```bash
+git clone https://github.com/alarconcesar/gemini-tts-mcp.git
+cd gemini-tts-mcp
+pip install mcp google-genai
+```
+
+**Option B — From anywhere (source must be in PYTHONPATH):**
+
 ```bash
 pip install mcp google-genai
-# or
-uv pip install mcp google-genai
+# then clone & run from the repo directory
 ```
 
 ### 2. Set up API keys
@@ -34,12 +46,11 @@ Create `~/.gemini-tts-mcp/keys.json`:
 
 Or set an env var: `export GEMINI_API_KEY="AIzaSy...your_key"`
 
-### 3. Run
+### 3. Run (from the repo directory)
 
 ```bash
+cd gemini-tts-mcp
 python -m gemini_tts_mcp.server
-# or
-uv run python -m gemini_tts_mcp.server
 ```
 
 ### 4. Register in any MCP host
