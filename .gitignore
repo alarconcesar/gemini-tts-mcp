@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+uv.lock
+
+# API keys — NEVER commit your real keys
+keys.json
+~/.gemini-tts-mcp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project
+dist/
+*.egg-info/

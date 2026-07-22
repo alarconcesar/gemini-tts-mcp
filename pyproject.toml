@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "gemini-tts-mcp"
+version = "0.1.0"
+description = "Multi-key Gemini TTS MCP server with API key rotation"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp",
+    "google-genai",
+]
+
+[project.scripts]
+gemini-tts-mcp = "gemini_tts_mcp.server:main"
