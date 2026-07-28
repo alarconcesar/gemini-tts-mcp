@@ -18,8 +18,8 @@ No baked-in voice, accent, or persona — all parameters are explicit.
 
 ### 1. Install
 
-> ⚠️ **Note:** This project is not on PyPI yet. The commands below install
-> **dependencies** (`mcp` SDK + `google-genai`). You also need the source code.
+> ⚠️ **Not available on PyPI** — install from source (see below).
+> `pip install mcp google-genai` installs **dependencies only**, not this project.
 
 **Option A — Clone the repo (recommended):**
 
