@@ -81,7 +81,7 @@ mcp_servers:
 
 | Tool | Description |
 |------|-------------|
-| `generate_speech` | Text → WAV file |
+| `generate_speech` | Text → audio file (WAV, MP3, OGG, M4A, FLAC) |
 | `list_voices` | Browse all 30 voices (filter by gender/tone) |
 | `list_voices_by_gender` | Shortcut: `voice "male"` or `voice "female"` |
 | `reload_keys` | Refresh API key pool from disk/env |
@@ -95,6 +95,7 @@ mcp_servers:
 | `voice_name` | `Puck` | Any of the 30 voices |
 | `style_instruction` | `""` | Speaking style e.g. "softly", "cheerfully", "in a calm tone" |
 | `pitch_factor` | `1.0` | >1 = higher pitch, <1 = lower |
+| `audio_format` | `wav` | Output format: `wav`, `mp3`, `ogg`, `m4a`, `flac` |
 | `model` | `null` | Override model (auto fallback if omitted) |
 | `output_path` | `null` | Custom WAV path |
 

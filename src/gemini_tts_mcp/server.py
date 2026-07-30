@@ -85,6 +85,7 @@ def generate_speech(
     voice_name: str = "Puck",
     style_instruction: str = "",
     pitch_factor: float = 1.0,
+    audio_format: str = "wav",
     model: str | None = None,
     output_path: str | None = None,
 ) -> str:
@@ -100,12 +101,13 @@ def generate_speech(
         style_instruction: Optional speaking-style hint prepended to text,
                            e.g. "speak softly", "cheerfully", "in a calm tone".
         pitch_factor: Pitch adjustment. 1.0 = no change, >1 = higher, <1 = lower.
+        audio_format: Target audio format: "wav", "mp3", "ogg", "m4a", "flac". Default: wav.
         model: Model override. Default: gemini-3.1-flash-tts-preview,
                falls back to gemini-2.5-flash-preview-tts.
-        output_path: Optional custom output path for the WAV file.
+        output_path: Optional custom output path for the audio file.
 
     Returns:
-        Absolute path to the generated WAV file, or error description.
+        Absolute path to the generated audio file, or error description.
     """
     # Validate voice
     valid = {v["name"].lower() for v in VOICES}
@@ -120,6 +122,7 @@ def generate_speech(
             voice_name=voice_name,
             style_instruction=style_instruction,
             pitch_factor=pitch_factor,
+            audio_format=audio_format,
             model=model,
             output_path=output_path,
         )

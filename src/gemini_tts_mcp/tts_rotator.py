@@ -4,7 +4,7 @@ Gemini TTS Rotator — Multi-key TTS generation engine.
 Loads Gemini API keys from ~/.gemini-tts-mcp/keys.json or env var,
 then rotates across them with model fallback.
 
-All voice/style/pitch parameters are explicit — no baked-in persona.
+All voice/style/pitch/format parameters are explicit — no baked-in persona.
 """
 import json
 import logging
@@ -23,6 +23,14 @@ logger = logging.getLogger("gemini_tts_mcp")
 DEFAULT_KEYS_PATH = os.path.expanduser("~/.gemini-tts-mcp/keys.json")
 DEFAULT_CACHE_DIR = os.path.expanduser("~/.gemini-tts-mcp/cache")
 
+SUPPORTED_FORMATS = {
+    "wav": ["-c:a", "pcm_s16le"],
+    "mp3": ["-c:a", "libmp3lame", "-b:a", "192k"],
+    "ogg": ["-c:a", "libopus", "-b:a", "32k"],
+    "m4a": ["-c:a", "aac", "-b:a", "128k"],
+    "flac": ["-c:a", "flac"],
+}
+
 
 def save_wave_file(filename: str, pcm: bytes, channels: int = 1,
                    rate: int = 24000, sample_width: int = 2) -> bool:
@@ -39,26 +47,45 @@ def save_wave_file(filename: str, pcm: bytes, channels: int = 1,
         return False
 
 
-def apply_pitch_shift(input_wav: str, output_wav: str,
-                      pitch_factor: float = 1.0) -> bool:
-    if pitch_factor == 1.0:
+def apply_pitch_and_format(
+    input_wav: str,
+    output_path: str,
+    pitch_factor: float = 1.0,
+    audio_format: str = "wav",
+) -> bool:
+    """Apply pitch shift and convert to target format using ffmpeg."""
+    fmt = audio_format.lower().strip().lstrip(".")
+    ffmpeg_args = SUPPORTED_FORMATS.get(fmt, ["-c:a", "pcm_s16le"])
+
+    # Build audio filter
+    af_filters = []
+    if pitch_factor != 1.0:
+        af_filters.append(f"asetrate=24000*{pitch_factor},atempo=1/{pitch_factor}")
+
+    cmd = ["ffmpeg", "-y", "-i", input_wav]
+    if af_filters:
+        cmd.extend(["-af", ",".join(af_filters)])
+    cmd.extend(ffmpeg_args)
+    cmd.append(output_path)
+
+    # If no pitch shift and output is wav, no need for ffmpeg if input_wav == output_path
+    if pitch_factor == 1.0 and fmt == "wav" and input_wav == output_path:
         return True
+
     try:
-        temp = input_wav + ".tmp.wav"
-        cmd = [
-            "ffmpeg", "-y", "-i", input_wav,
-            "-af", f"asetrate=24000*{pitch_factor},atempo=1/{pitch_factor}",
-            temp,
-        ]
         result = subprocess.run(cmd, capture_output=True)
-        if result.returncode == 0 and os.path.exists(temp):
-            os.replace(temp, output_wav)
+        if result.returncode == 0 and os.path.exists(output_path):
+            if input_wav != output_path and os.path.exists(input_wav):
+                try:
+                    os.remove(input_wav)
+                except OSError:
+                    pass
             return True
-        logger.error("ffmpeg pitch shift failed: %s",
-                      result.stderr.decode(errors="ignore"))
+        logger.error("ffmpeg conversion failed: %s",
+                     result.stderr.decode(errors="ignore"))
         return False
     except Exception as e:
-        logger.error("Pitch shift exception: %s", e)
+        logger.error("ffmpeg exception: %s", e)
         return False
 
 
@@ -113,6 +140,7 @@ class GeminiTTSRotator:
         voice_name: str = "Puck",
         style_instruction: str = "",
         pitch_factor: float = 1.0,
+        audio_format: str = "wav",
         model: Optional[str] = None,
         output_path: Optional[str] = None,
     ) -> str:
@@ -124,10 +152,11 @@ class GeminiTTSRotator:
             style_instruction: Optional speaking-style instruction
                 (e.g. "softly", "cheerfully"). Prepended to text.
             pitch_factor: 1.0 = no change. >1 = higher, <1 = lower.
+            audio_format: Output format: "wav", "mp3", "ogg", "m4a", "flac".
             model: Specific model override.
-            output_path: Where to save the WAV. Auto-named if omitted.
+            output_path: Where to save the file. Auto-named if omitted.
 
-        Returns: Absolute path to the generated WAV file.
+        Returns: Absolute path to the generated audio file.
         """
         if not self.api_keys:
             reloaded = self.reload_keys()
@@ -137,12 +166,22 @@ class GeminiTTSRotator:
                     "or set GEMINI_API_KEY / GOOGLE_API_KEY env var."
                 )
 
+        fmt = audio_format.lower().strip().lstrip(".")
+        if fmt not in SUPPORTED_FORMATS:
+            fmt = "wav"
+
         if not output_path:
             output_path = os.path.join(
-                self.cache_dir, f"tts_{int(time.time())}.wav"
+                self.cache_dir, f"tts_{int(time.time())}.{fmt}"
             )
         else:
             os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+            # Infer format from extension if explicitly provided in path
+            ext = os.path.splitext(output_path)[1].lower().lstrip(".")
+            if ext in SUPPORTED_FORMATS:
+                fmt = ext
+
+        temp_wav = output_path + ".temp.wav" if fmt != "wav" or pitch_factor != 1.0 else output_path
 
         # Build ordered, deduplicated list of models to try
         preferred = [model] if model else []
@@ -174,10 +213,11 @@ class GeminiTTSRotator:
                     )
                     data = response.candidates[0].content.parts[0].inline_data.data
 
-                    if save_wave_file(output_path, data):
+                    if save_wave_file(temp_wav, data):
                         self.current_index = idx
-                        if pitch_factor != 1.0:
-                            apply_pitch_shift(output_path, output_path, pitch_factor)
+                        apply_pitch_and_format(
+                            temp_wav, output_path, pitch_factor, fmt
+                        )
                         return os.path.abspath(output_path)
 
                 except APIError as e:
