@@ -21,7 +21,10 @@ _src = os.path.join(os.path.dirname(__file__), "..")
 if os.path.isdir(_src) and _src not in sys.path:
     sys.path.insert(0, _src)
 
-from mcp.server.fastmcp import FastMCP
+try:
+    from fastmcp import FastMCP
+except ImportError:  # mcp<2, ruta original
+    from mcp.server.fastmcp import FastMCP
 from gemini_tts_mcp.tts_rotator import GeminiTTSRotator
 
 logger = logging.getLogger("gemini_tts_mcp")
@@ -91,6 +94,9 @@ def generate_speech(
 ) -> str:
     """Generate speech audio from text using Gemini TTS.
 
+    Audio is post-processed automatically: trailing noise-burst cleanup,
+    loudness normalization, subtle presence EQ, and 48 kHz output.
+
     Rotates across all configured API keys and falls back between models.
     Gemini TTS voices are multilingual — any voice speaks the language
     of the input text automatically.
@@ -102,8 +108,8 @@ def generate_speech(
                            e.g. "speak softly", "cheerfully", "in a calm tone".
         pitch_factor: Pitch adjustment. 1.0 = no change, >1 = higher, <1 = lower.
         audio_format: Target audio format: "wav", "mp3", "ogg", "m4a", "flac". Default: wav.
-        model: Model override. Default: gemini-3.1-flash-tts-preview,
-               falls back to gemini-2.5-flash-preview-tts.
+        model: Model override. Default: gemini-3.8-flash-tts, falls back to
+               gemini-3.1-flash-tts-preview and gemini-2.5-flash-preview-tts.
         output_path: Optional custom output path for the audio file.
 
     Returns:

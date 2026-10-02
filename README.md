@@ -7,7 +7,8 @@ No baked-in voice, accent, or persona — all parameters are explicit.
 ## Features
 
 - 🔄 **Key rotation** — pool of Gemini API keys; auto-rotates on quota/error
-- 📉 **Model fallback** — tries `gemini-3.1-flash-tts-preview` → `gemini-2.5-flash-preview-tts`
+- 📉 **Model fallback** — tries `gemini-3.8-flash-tts` → `gemini-3.1-flash-tts-preview` → `gemini-2.5-flash-preview-tts`
+- 🧼 **Auto cleanup + mastering** — trims the trailing noise burst some models append, normalizes loudness (I=-16 LUFS), subtle presence EQ, 48 kHz output
 - 🗣️ **30 voices** — full catalog with gender, tone, and description
 - 🔍 **Filter by gender/tone** — `list_voices(male/female)` or by tone name
 - 🎚️ **Pitch control** — `pitch_factor` parameter (ffmpeg-based)

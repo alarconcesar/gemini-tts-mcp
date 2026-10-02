@@ -6,8 +6,10 @@ then rotates across them with model fallback.
 
 All voice/style/pitch/format parameters are explicit — no baked-in persona.
 """
+import array
 import json
 import logging
+import math
 import os
 import subprocess
 import time
@@ -25,11 +27,24 @@ DEFAULT_CACHE_DIR = os.path.expanduser("~/.gemini-tts-mcp/cache")
 
 SUPPORTED_FORMATS = {
     "wav": ["-c:a", "pcm_s16le"],
-    "mp3": ["-c:a", "libmp3lame", "-b:a", "192k"],
+    "mp3": ["-c:a", "libmp3lame", "-b:a", "256k"],
     "ogg": ["-c:a", "libopus", "-b:a", "32k"],
     "m4a": ["-c:a", "aac", "-b:a", "128k"],
     "flac": ["-c:a", "flac"],
 }
+
+# Post-processing chain applied to every generation: rumble cleanup, broadcast
+# loudness (I=-16 LUFS), a touch of presence, and 48 kHz output so MP3 is not
+# stuck at the 24 kHz (MPEG-2) bitrate ceiling.
+QUALITY_CHAIN = (
+    "highpass=f=60,"
+    "loudnorm=I=-16:TP=-1.5:LRA=11,"
+    "equalizer=f=3000:t=q:w=1:g=1.5,"
+    "equalizer=f=6500:t=h:w=1:g=2.5,"
+    "aresample=48000:resampler=soxr:precision=28"
+)
+
+FADE_SECONDS = 0.25
 
 
 def save_wave_file(filename: str, pcm: bytes, channels: int = 1,
@@ -47,30 +62,98 @@ def save_wave_file(filename: str, pcm: bytes, channels: int = 1,
         return False
 
 
+def detect_trailing_artifact(input_wav: str) -> Optional[float]:
+    """Detect the full-scale noise burst some Gemini TTS models append at the
+    end of the audio (a ~0.13-0.4 s run of clipped noise right before EOF).
+
+    Returns the time (seconds) to cut at, or None when no artifact is found.
+    """
+    try:
+        with wave.open(input_wav) as w:
+            if w.getsampwidth() != 2 or w.getnchannels() != 1:
+                return None  # only analyze the mono s16 model output
+            n = w.getnframes()
+            sr = w.getframerate()
+            frames = w.readframes(n)
+    except Exception as e:
+        logger.warning("Artifact detection skipped: %s", e)
+        return None
+
+    if sr <= 0:
+        return None
+    samples = array.array("h")
+    samples.frombytes(frames[: len(frames) - (len(frames) % 2)])
+    if len(samples) < sr:
+        return None
+
+    def _rms(seg) -> float:
+        return math.sqrt(sum(x * x for x in seg) / len(seg)) if len(seg) else 0.0
+
+    win = max(1, int(0.010 * sr))  # 10 ms analysis windows
+    tail_len = min(len(samples), int(0.5 * sr))
+    tail_off = len(samples) - tail_len
+    clips = [i for i, x in enumerate(samples[tail_off:]) if abs(x) >= 32000]
+    if len(clips) < 10:
+        return None
+    # Artifact signature: clipped samples running to (nearly) the very end
+    if (tail_len - clips[-1]) > int(0.15 * sr):
+        return None
+    first_clip = tail_off + clips[0]
+
+    # Walk backwards from the first clipped sample while the signal stays loud
+    # (through the noise burst and its ramp) until the quiet gap before it.
+    loud_rms = 200.0
+    quiet_gap_rms = 300.0
+    max_back = int(0.6 * sr)
+    pos = first_clip
+    found_quiet = False
+    while pos - win >= 0 and (first_clip - pos) < max_back:
+        if _rms(samples[pos - win:pos]) < loud_rms:
+            found_quiet = True
+            break
+        pos -= win
+    onset = pos
+
+    cut = None
+    if found_quiet:
+        gap = samples[max(0, onset - int(0.10 * sr)):onset]
+        if _rms(gap) < quiet_gap_rms:
+            cut = (onset - int(0.02 * sr)) / sr
+    if cut is None:
+        # No clear quiet gap: cut just before the clipped run as a fallback
+        cut = (first_clip - int(0.05 * sr)) / sr
+    return cut if cut > 0.05 else None
+
+
 def apply_pitch_and_format(
     input_wav: str,
     output_path: str,
     pitch_factor: float = 1.0,
     audio_format: str = "wav",
 ) -> bool:
-    """Apply pitch shift and convert to target format using ffmpeg."""
+    """Clean up (trailing burst), apply loudness/EQ chain, pitch shift and
+    convert to the target format using ffmpeg."""
     fmt = audio_format.lower().strip().lstrip(".")
     ffmpeg_args = SUPPORTED_FORMATS.get(fmt, ["-c:a", "pcm_s16le"])
 
-    # Build audio filter
+    cut = detect_trailing_artifact(input_wav)
+
     af_filters = []
     if pitch_factor != 1.0:
         af_filters.append(f"asetrate=24000*{pitch_factor},atempo=1/{pitch_factor}")
+    if cut is not None:
+        af_filters.append(f"atrim=0:{cut:.3f}")
+        af_filters.append("asetpts=N/SR/TB")
+    af_filters.append(QUALITY_CHAIN)
+    if cut is not None:
+        fade_start = max(0.0, cut - FADE_SECONDS)
+        af_filters.append(
+            f"afade=t=out:st={fade_start:.3f}:d={min(FADE_SECONDS, cut):.3f}"
+        )
 
-    cmd = ["ffmpeg", "-y", "-i", input_wav]
-    if af_filters:
-        cmd.extend(["-af", ",".join(af_filters)])
+    cmd = ["ffmpeg", "-y", "-i", input_wav, "-af", ",".join(af_filters)]
     cmd.extend(ffmpeg_args)
     cmd.append(output_path)
-
-    # If no pitch shift and output is wav, no need for ffmpeg if input_wav == output_path
-    if pitch_factor == 1.0 and fmt == "wav" and input_wav == output_path:
-        return True
 
     try:
         result = subprocess.run(cmd, capture_output=True)
@@ -114,6 +197,7 @@ class GeminiTTSRotator:
     """Rotate across API keys + model fallback for Gemini TTS."""
 
     MODELS = [
+        "gemini-3.8-flash-tts",
         "gemini-3.1-flash-tts-preview",
         "gemini-2.5-flash-preview-tts",
     ]
@@ -181,7 +265,7 @@ class GeminiTTSRotator:
             if ext in SUPPORTED_FORMATS:
                 fmt = ext
 
-        temp_wav = output_path + ".temp.wav" if fmt != "wav" or pitch_factor != 1.0 else output_path
+        temp_wav = output_path + ".temp.wav"
 
         # Build ordered, deduplicated list of models to try
         preferred = [model] if model else []
