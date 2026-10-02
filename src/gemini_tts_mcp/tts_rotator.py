@@ -7,6 +7,7 @@ then rotates across them with model fallback.
 All voice/style/pitch/format parameters are explicit — no baked-in persona.
 """
 import array
+import base64
 import json
 import logging
 import math
@@ -45,6 +46,61 @@ QUALITY_CHAIN = (
 )
 
 FADE_SECONDS = 0.25
+
+# Gemini 3.8 TTS family: new Interactions API. Input text is a verbatim
+# transcript; sustained delivery directions go in speech_metadata.style.
+INTERACTIONS_MODEL_PREFIX = "gemini-3.8"
+
+
+def is_interactions_model(model: str) -> bool:
+    return model.startswith(INTERACTIONS_MODEL_PREFIX)
+
+
+def synthesize_interactions(client, model: str, text: str, voice_name: str,
+                            style_instruction: str = "") -> bytes:
+    """Synthesize with the Interactions API (Gemini 3.8 TTS family).
+
+    Returns the model's default WAV file bytes (24 kHz mono, RIFF header) —
+    do NOT wrap these in another WAV header.
+    """
+    part: dict = {"type": "text", "text": text}
+    if style_instruction.strip():
+        part["annotations"] = [
+            {"type": "speech_metadata", "style": style_instruction.strip()}
+        ]
+    interaction = client.interactions.create(
+        model=model,
+        input=[{"type": "user_input", "content": [part]}],
+        response_format={"type": "audio"},
+        generation_config={"speech_config": [{"voice": voice_name}]},
+    )
+    audio = getattr(interaction, "output_audio", None)
+    if audio is None or not audio.data:
+        raise RuntimeError("Interactions API returned no audio")
+    return base64.b64decode(audio.data)
+
+
+def synthesize_generate_content(client, model: str, contents: str,
+                                voice_name: str) -> bytes:
+    """Legacy models (<= gemini-3.1-flash-tts-preview): generateContent API.
+
+    Returns headerless raw PCM (24 kHz mono s16).
+    """
+    response = client.models.generate_content(
+        model=model,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            response_modalities=["AUDIO"],
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                        voice_name=voice_name,
+                    )
+                )
+            ),
+        ),
+    )
+    return response.candidates[0].content.parts[0].inline_data.data
 
 
 def save_wave_file(filename: str, pcm: bytes, channels: int = 1,
@@ -138,9 +194,15 @@ def apply_pitch_and_format(
 
     cut = detect_trailing_artifact(input_wav)
 
+    try:
+        with wave.open(input_wav) as w:
+            src_rate = w.getframerate()
+    except Exception:
+        src_rate = 24000
+
     af_filters = []
     if pitch_factor != 1.0:
-        af_filters.append(f"asetrate=24000*{pitch_factor},atempo=1/{pitch_factor}")
+        af_filters.append(f"asetrate={src_rate}*{pitch_factor},atempo=1/{pitch_factor}")
     if cut is not None:
         af_filters.append(f"atrim=0:{cut:.3f}")
         af_filters.append("asetpts=N/SR/TB")
@@ -198,6 +260,7 @@ class GeminiTTSRotator:
 
     MODELS = [
         "gemini-3.8-flash-tts",
+        "gemini-3.8-flash-lite-tts",
         "gemini-3.1-flash-tts-preview",
         "gemini-2.5-flash-preview-tts",
     ]
@@ -271,6 +334,8 @@ class GeminiTTSRotator:
         preferred = [model] if model else []
         models_to_try = list(dict.fromkeys(preferred + self.MODELS))
 
+        # Older models interpret a style prefix inside plain text; the 3.8
+        # family keeps the transcript verbatim and takes style separately.
         payload = f"{style_instruction.strip()}: {text}" if style_instruction else text
 
         for target_model in models_to_try:
@@ -281,28 +346,38 @@ class GeminiTTSRotator:
 
                 try:
                     client = genai.Client(api_key=api_key)
-                    response = client.models.generate_content(
-                        model=target_model,
-                        contents=payload,
-                        config=types.GenerateContentConfig(
-                            response_modalities=["AUDIO"],
-                            speech_config=types.SpeechConfig(
-                                voice_config=types.VoiceConfig(
-                                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                        voice_name=voice_name,
-                                    )
-                                )
-                            ),
-                        ),
-                    )
-                    data = response.candidates[0].content.parts[0].inline_data.data
-
-                    if save_wave_file(temp_wav, data):
-                        self.current_index = idx
-                        apply_pitch_and_format(
-                            temp_wav, output_path, pitch_factor, fmt
+                    if is_interactions_model(target_model):
+                        try:
+                            wav_bytes = synthesize_interactions(
+                                client, target_model, text, voice_name,
+                                style_instruction,
+                            )
+                            with open(temp_wav, "wb") as f:
+                                f.write(wav_bytes)
+                        except Exception as e:
+                            # Hiccup on this key: retry via legacy generate_content
+                            logger.warning(
+                                "Interactions API failed on %s (%s); "
+                                "falling back to generate_content",
+                                target_model, e,
+                            )
+                            data = synthesize_generate_content(
+                                client, target_model, text, voice_name
+                            )
+                            if not save_wave_file(temp_wav, data):
+                                raise RuntimeError("Could not write temp WAV")
+                    else:
+                        data = synthesize_generate_content(
+                            client, target_model, payload, voice_name
                         )
-                        return os.path.abspath(output_path)
+                        if not save_wave_file(temp_wav, data):
+                            raise RuntimeError("Could not write temp WAV")
+
+                    self.current_index = idx
+                    apply_pitch_and_format(
+                        temp_wav, output_path, pitch_factor, fmt
+                    )
+                    return os.path.abspath(output_path)
 
                 except APIError as e:
                     logger.warning("Key #%d failed on %s: %s", idx + 1, target_model, e.message)

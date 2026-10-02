@@ -104,12 +104,17 @@ def generate_speech(
     Args:
         text: The text content to vocalize.
         voice_name: Gemini voice (use list_voices to browse). Default: Puck.
-        style_instruction: Optional speaking-style hint prepended to text,
-                           e.g. "speak softly", "cheerfully", "in a calm tone".
+        style_instruction: Optional speaking-style hint, e.g. "speak softly",
+                           "cheerfully", "in a calm tone". For the Gemini 3.8
+                           family it is sent separately (speech_metadata) and
+                           the transcript stays verbatim — inline vocal tags
+                           like <sigh> or <short pause> can go inside the text.
+                           For older models it is prepended to the text.
         pitch_factor: Pitch adjustment. 1.0 = no change, >1 = higher, <1 = lower.
         audio_format: Target audio format: "wav", "mp3", "ogg", "m4a", "flac". Default: wav.
         model: Model override. Default: gemini-3.8-flash-tts, falls back to
-               gemini-3.1-flash-tts-preview and gemini-2.5-flash-preview-tts.
+               gemini-3.8-flash-lite-tts, gemini-3.1-flash-tts-preview and
+               gemini-2.5-flash-preview-tts.
         output_path: Optional custom output path for the audio file.
 
     Returns:
